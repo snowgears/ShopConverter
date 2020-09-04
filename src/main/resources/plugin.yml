@@ -1,7 +1,7 @@
 name: ShopConverter
 author: Tanner Embry (SnowGears)
 description: Convert ChestShop shops into Shop shops.
-version: 1.0
+version: 1.1
 main: com.snowgears.shopconverter.ShopConverter
 depend: [ChestShop, Shop]
 commands:

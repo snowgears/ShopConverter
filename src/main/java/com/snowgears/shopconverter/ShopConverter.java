@@ -4,24 +4,24 @@ package com.snowgears.shopconverter;
 import com.Acrobot.Breeze.Utils.MaterialUtil;
 import com.Acrobot.Breeze.Utils.PriceUtil;
 import com.Acrobot.ChestShop.ChestShop;
-import com.Acrobot.ChestShop.Events.PreTransactionEvent;
 import com.Acrobot.ChestShop.Signs.ChestShopSign;
 import com.Acrobot.ChestShop.UUIDs.NameManager;
+import com.snowgears.shop.SellShop;
 import com.snowgears.shop.Shop;
-import com.snowgears.shop.ShopObject;
 import com.snowgears.shop.ShopType;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.*;
+import org.bukkit.block.data.Directional;
+import org.bukkit.block.data.Rotatable;
+import org.bukkit.block.data.type.Wall;
+import org.bukkit.block.data.type.WallSign;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
-import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.Arrays;
-import java.util.List;
 import java.util.UUID;
 
 public class ShopConverter extends JavaPlugin {
@@ -82,7 +82,7 @@ public class ShopConverter extends JavaPlugin {
                                     boolean isAdmin = NameManager.isAdminShop(uuid);
 
                                     formChestAndSign(sign);
-                                    ShopObject updatedShop = new ShopObject(blockState.getLocation(), uuid, price, amount, isAdmin, ShopType.SELL);
+                                    SellShop updatedShop = new SellShop(blockState.getLocation(), uuid, price, amount, isAdmin);
                                     Shop.getPlugin().getShopHandler().addShop(updatedShop);
                                     updatedShop.setItemStack(item);
                                     updatedShop.updateSign();
@@ -95,44 +95,54 @@ public class ShopConverter extends JavaPlugin {
         }
     }
 
-    private void formChestAndSign(Sign sign){
-        org.bukkit.material.Sign matSign = (org.bukkit.material.Sign)sign.getData();
-        byte chestDirection = 2;
-        switch(matSign.getData()){
-            case 8: //NORTH
-                chestDirection = 2;
-                break;
-            case 12: //EAST
-                chestDirection = 5;
-                break;
-            case 0: //SOUTH
-                chestDirection = 3;
-                break;
-            case 4: //WEST
-                chestDirection = 4;
-                break;
-            default:
-                break;
+    private void formChestAndSign(Sign sign) {
+        BlockFace signDirection = null;
+        //if instanceof rotatable (regular sign post), get blockface from closest rotation
+        if(sign.getBlockData() instanceof Rotatable){
+            signDirection = ((Rotatable) sign.getBlockData()).getRotation();
+            //adjust the sign direction to coordinal direction if its not already one
+            if( signDirection.toString().indexOf('_') != -1) {
+                String adjustedDirString = signDirection.toString().substring(0, signDirection.toString().indexOf('_'));
+                signDirection = BlockFace.valueOf(adjustedDirString);
+            }
+        }
+        //if instanceof wallsign, get blockface from facing
+        else if (sign.getBlockData() instanceof WallSign) {
+            WallSign wallSign = (WallSign) sign.getBlockData();
+            signDirection = wallSign.getFacing();
         }
 
-        Block toChest;
-        if (matSign.isWallSign())
-            toChest = sign.getBlock().getRelative(matSign.getAttachedFace());
-        else
-            toChest = sign.getBlock().getRelative(matSign.getFacing().getOppositeFace());
+        if(signDirection == null)
+            return;
 
-        if(toChest.getState() instanceof Chest){
-            Chest chest = (Chest)toChest.getState();
-            ItemStack[] contents = chest.getInventory().getContents().clone();
-            toChest.setTypeIdAndData(Material.CHEST.getId(), chestDirection, true);
+        Block toChest = sign.getBlock().getRelative(signDirection.getOppositeFace());
+
+        //if theres no chest on the other side of the sign, make one
+        if (!(toChest.getState() instanceof Chest)) {
+            toChest.setType(Material.CHEST);
+        }
+
+        Chest chest = (Chest) toChest.getState();
+        ItemStack[] contents = chest.getInventory().getContents().clone();
+
+        //this should always be true because chests are directional, but check just in case
+        if(toChest.getBlockData() instanceof Directional){
+            Directional directional = (Directional) toChest.getBlockData();
+            directional.setFacing(signDirection);
+            toChest.setBlockData(directional);
             chest.getInventory().setContents(contents);
+            toChest.getRelative(BlockFace.UP).setType(Material.AIR);
         }
-        else{
-            toChest.setTypeIdAndData(Material.CHEST.getId(), chestDirection, true);
-        }
-        toChest.getRelative(BlockFace.UP).setType(Material.AIR);
 
-        sign.getBlock().setTypeIdAndData(Material.WALL_SIGN.getId(), chestDirection, true);
+        //make the sign a wall sign, and set the direction to match what it used to be
+        sign.getBlock().setType(Material.OAK_WALL_SIGN);
+
+        //also should always be true, since wall signs are directional, but check anyway
+        if(sign.getBlockData() instanceof WallSign){
+            WallSign wallSign = (WallSign) sign.getBlockData();
+            wallSign.setFacing(signDirection);
+            sign.setBlockData(wallSign);
+        }
         sign.update();
     }
 }
