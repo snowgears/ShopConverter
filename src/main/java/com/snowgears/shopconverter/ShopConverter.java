@@ -86,6 +86,8 @@ public class ShopConverter extends JavaPlugin {
                                     Shop.getPlugin().getShopHandler().addShop(updatedShop);
                                     updatedShop.setItemStack(item);
                                     updatedShop.updateSign();
+
+                                    shop.getShopHandler().addShop(updatedShop);
                                 }
                             } catch (Exception e){ } //do nothing
                         }
