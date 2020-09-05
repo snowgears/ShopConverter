@@ -95,6 +95,7 @@ public class ShopConverter extends JavaPlugin {
                 }
             }
         }
+        shop.getShopHandler().saveAllShops();
     }
 
     private void formChestAndSign(Sign sign) {

@@ -6,7 +6,7 @@
 
     <groupId>com.snowgears.shopconverter</groupId>
     <artifactId>ShopConverter</artifactId>
-    <version>1.1</version>
+    <version>1.1.1</version>
 
     <properties>
         <maven.compiler.source>1.8</maven.compiler.source>
