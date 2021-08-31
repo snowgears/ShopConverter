@@ -6,16 +6,14 @@ import com.Acrobot.Breeze.Utils.PriceUtil;
 import com.Acrobot.ChestShop.ChestShop;
 import com.Acrobot.ChestShop.Signs.ChestShopSign;
 import com.Acrobot.ChestShop.UUIDs.NameManager;
-import com.snowgears.shop.SellShop;
 import com.snowgears.shop.Shop;
-import com.snowgears.shop.ShopType;
+import com.snowgears.shop.shop.SellShop;
 import org.bukkit.Chunk;
 import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.block.*;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.Rotatable;
-import org.bukkit.block.data.type.Wall;
 import org.bukkit.block.data.type.WallSign;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -81,13 +79,15 @@ public class ShopConverter extends JavaPlugin {
                                     ItemStack item = MaterialUtil.getItem(material);
                                     boolean isAdmin = NameManager.isAdminShop(uuid);
 
-                                    formChestAndSign(sign);
-                                    SellShop updatedShop = new SellShop(blockState.getLocation(), uuid, price, amount, isAdmin);
-                                    Shop.getPlugin().getShopHandler().addShop(updatedShop);
-                                    updatedShop.setItemStack(item);
-                                    updatedShop.updateSign();
+                                    BlockFace signDirection = formChestAndSign(sign);
+                                    if(signDirection != null) {
+                                        SellShop updatedShop = new SellShop(blockState.getLocation(), uuid, price, amount, isAdmin, signDirection);
+                                        Shop.getPlugin().getShopHandler().addShop(updatedShop);
+                                        updatedShop.setItemStack(item);
+                                        updatedShop.updateSign();
 
-                                    shop.getShopHandler().addShop(updatedShop);
+                                        shop.getShopHandler().addShop(updatedShop);
+                                    }
                                 }
                             } catch (Exception e){ } //do nothing
                         }
@@ -98,7 +98,8 @@ public class ShopConverter extends JavaPlugin {
         shop.getShopHandler().saveAllShops();
     }
 
-    private void formChestAndSign(Sign sign) {
+    //creates the chest and sign for Shop and returns the direction of the sign
+    private BlockFace formChestAndSign(Sign sign) {
         BlockFace signDirection = null;
         //if instanceof rotatable (regular sign post), get blockface from closest rotation
         if(sign.getBlockData() instanceof Rotatable){
@@ -116,7 +117,7 @@ public class ShopConverter extends JavaPlugin {
         }
 
         if(signDirection == null)
-            return;
+            return null;
 
         Block toChest = sign.getBlock().getRelative(signDirection.getOppositeFace());
 
@@ -147,5 +148,7 @@ public class ShopConverter extends JavaPlugin {
             sign.setBlockData(wallSign);
         }
         sign.update();
+
+        return signDirection;
     }
 }
