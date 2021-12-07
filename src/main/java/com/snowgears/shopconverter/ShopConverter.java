@@ -1,38 +1,64 @@
 package com.snowgears.shopconverter;
 
 
-import com.Acrobot.Breeze.Utils.MaterialUtil;
-import com.Acrobot.Breeze.Utils.PriceUtil;
-import com.Acrobot.ChestShop.ChestShop;
-import com.Acrobot.ChestShop.Signs.ChestShopSign;
-import com.Acrobot.ChestShop.UUIDs.NameManager;
 import com.snowgears.shop.Shop;
-import com.snowgears.shop.shop.SellShop;
-import org.bukkit.Chunk;
+import com.snowgears.shopconverter.converter.ChestShopConverter;
+import com.snowgears.shopconverter.converter.Converter;
+import com.snowgears.shopconverter.converter.EssentialsShopConverter;
+import com.snowgears.shopconverter.converter.QuickShopConverter;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.block.*;
+import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.Chest;
+import org.bukkit.block.Sign;
 import org.bukkit.block.data.Directional;
 import org.bukkit.block.data.Rotatable;
 import org.bukkit.block.data.type.WallSign;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.UUID;
-
 public class ShopConverter extends JavaPlugin {
 
-    private static ShopConverter plugin;
+    public static ShopConverter plugin;
+    public Converter externalShopConverter;
     private final ConvertListener convertListener = new ConvertListener(this);
 
+    public static Shop shopPlugin;
     public static ShopConverter getPlugin() {
         return plugin;
     }
 
     public void onEnable() {
         plugin = this;
+        this.shopPlugin = (Shop) this.getServer().getPluginManager().getPlugin("Shop");
+        if(this.shopPlugin == null){
+            System.out.println("[ShopConverter] Shop needs to be installed for this utility to function! Disabling converter...");
+            getServer().getPluginManager().disablePlugin(this);
+        }
+
+        if(getServer().getPluginManager().getPlugin("ChestShop") != null) {
+            System.out.println("[ShopConverter] Found ChestShop on server. This utility will convert all ChestShop shops to Shop shops!");
+            externalShopConverter = new ChestShopConverter();
+        }
+        else if(getServer().getPluginManager().getPlugin("QuickShop") != null) {
+            System.out.println("[ShopConverter] Found QuickShop on server. This utility will convert all QuickShop shops to Shop shops!");
+            externalShopConverter = new QuickShopConverter();
+        }
+        else if(getServer().getPluginManager().getPlugin("Essentials") != null){
+            System.out.println("[ShopConverter] Found Essentials on server. This utility will convert all Essentials shops to Shop shops!");
+            externalShopConverter = new EssentialsShopConverter();
+        }
+        else{
+            System.out.println("[ShopConverter] No supported shop plugins were found on the server!");
+            System.out.println("[ShopConverter] One is required to be installed for this utility to function! Disabling converter...");
+            getServer().getPluginManager().disablePlugin(this);
+        }
+
         getServer().getPluginManager().registerEvents(convertListener, this);
     }
 
@@ -43,64 +69,37 @@ public class ShopConverter extends JavaPlugin {
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         if(cmd.getName().equalsIgnoreCase("shopconvert") && args.length == 0){
-            convertAllShops();
-            sender.sendMessage("All ChestShops in any loaded chunks have been converted to Shops.");
+            if(externalShopConverter.runAtChunkLoad()) {
+                if(sender instanceof Player) {
+                    Player player = (Player) sender;
+                    sender.sendMessage(ChatColor.GRAY+externalShopConverter.getShopPluginName()+" conversions happen at chunk load automatically.");
+                    player.sendMessage(ChatColor.GRAY+"Forcing shop conversions in current chunk...");
+                    int numConverted = externalShopConverter.convertChunk(player.getLocation().getChunk());
+                    sender.sendMessage(ChatColor.GRAY+"Converted "+ChatColor.GREEN+numConverted+ChatColor.GRAY+" "+externalShopConverter.getShopPluginName()+" shops to Shop shops.");
+                }
+                else{
+                    sender.sendMessage("[ShopConverter] "+externalShopConverter.getShopPluginName()+" conversions happen at chunk load automatically.");
+                }
+            }
+            else{
+                int numConverted = externalShopConverter.convertAll();
+                if(sender instanceof Player) {
+                    Player player = (Player) sender;
+                    player.sendMessage(ChatColor.GRAY+"Converted "+ChatColor.GREEN+numConverted+ChatColor.GRAY+" "+externalShopConverter.getShopPluginName()+" shops to Shop shops.");
+                }
+                else{
+                    sender.sendMessage("[ShopConverter] Converted "+numConverted+" "+externalShopConverter.getShopPluginName()+" shops to Shop shops.");
+                }
+            }
             return true;
         }
         return true;
     }
 
-    private void convertAllShops(){
-        Shop shop = (Shop) this.getServer().getPluginManager().getPlugin("Shop");
-        ChestShop chestShop = (ChestShop) this.getServer().getPluginManager().getPlugin("ChestShop");
-
-        //TODO figure out how to get all shops from chestshop
-        //if this is not possible, you will have to scan every block in the world, checking if they are signs, and parsing
-
-        for(World world : plugin.getServer().getWorlds()) {
-            for(Chunk chunk : world.getLoadedChunks()) {
-                for (BlockState blockState : chunk.getTileEntities()) {
-                    if (blockState instanceof Sign) {
-                        Sign sign = (Sign) blockState;
-                        if(ChestShopSign.isValid(sign)){
-                            try {
-                                //all of this code is taken from the ChestShop plugin source
-                                String name = sign.getLine(0);
-                                String quantity = sign.getLine(1);
-                                String prices = sign.getLine(2);
-                                String material = sign.getLine(3);
-
-                                String ownerName = NameManager.getFullUsername(name);
-                                UUID uuid = NameManager.getUUID(ownerName);
-
-                                if (uuid != null) {
-                                    int amount = Integer.parseInt(quantity);
-                                    double price = PriceUtil.getBuyPrice(prices); //PriceUtil.getSellPrice(prices)); //maybe make a sell price option later
-                                    ItemStack item = MaterialUtil.getItem(material);
-                                    boolean isAdmin = NameManager.isAdminShop(uuid);
-
-                                    BlockFace signDirection = formChestAndSign(sign);
-                                    if(signDirection != null) {
-                                        SellShop updatedShop = new SellShop(blockState.getLocation(), uuid, price, amount, isAdmin, signDirection);
-                                        Shop.getPlugin().getShopHandler().addShop(updatedShop);
-                                        updatedShop.setItemStack(item);
-                                        updatedShop.updateSign();
-
-                                        shop.getShopHandler().addShop(updatedShop);
-                                    }
-                                }
-                            } catch (Exception e){ } //do nothing
-                        }
-                    }
-                }
-            }
-        }
-        shop.getShopHandler().saveAllShops();
-    }
-
     //creates the chest and sign for Shop and returns the direction of the sign
-    private BlockFace formChestAndSign(Sign sign) {
+    public static BlockFace formBlocksFromSign(Sign sign) {
         BlockFace signDirection = null;
+        Material signMaterial = null;
         //if instanceof rotatable (regular sign post), get blockface from closest rotation
         if(sign.getBlockData() instanceof Rotatable){
             signDirection = ((Rotatable) sign.getBlockData()).getRotation();
@@ -109,11 +108,23 @@ public class ShopConverter extends JavaPlugin {
                 String adjustedDirString = signDirection.toString().substring(0, signDirection.toString().indexOf('_'));
                 signDirection = BlockFace.valueOf(adjustedDirString);
             }
+            String signMat = sign.getBlockData().getMaterial().toString();
+            int index = signMat.indexOf("_SIGN");
+            if(index != -1){
+                signMaterial = Material.valueOf(signMat.substring(0, index)+"_WALL_SIGN");
+            }else{
+                return null;
+            }
+
+            //make the sign a wall sign, and set the direction to match what it used to be
+            sign.setType(signMaterial);
+            sign.update(true);
         }
         //if instanceof wallsign, get blockface from facing
         else if (sign.getBlockData() instanceof WallSign) {
             WallSign wallSign = (WallSign) sign.getBlockData();
             signDirection = wallSign.getFacing();
+            signMaterial = wallSign.getMaterial();
         }
 
         if(signDirection == null)
@@ -138,17 +149,44 @@ public class ShopConverter extends JavaPlugin {
             toChest.getRelative(BlockFace.UP).setType(Material.AIR);
         }
 
-        //make the sign a wall sign, and set the direction to match what it used to be
-        sign.getBlock().setType(Material.OAK_WALL_SIGN);
-
-        //also should always be true, since wall signs are directional, but check anyway
-        if(sign.getBlockData() instanceof WallSign){
-            WallSign wallSign = (WallSign) sign.getBlockData();
-            wallSign.setFacing(signDirection);
-            sign.setBlockData(wallSign);
-        }
-        sign.update();
+        final BlockFace fSignDirection = signDirection;
+        plugin.getServer().getScheduler().scheduleSyncDelayedTask(plugin, new Runnable() {
+            public void run() {
+                //when in doubt do a delayed task
+                WallSign wallSign = (WallSign) sign.getBlockData();
+                wallSign.setFacing(fSignDirection);
+                sign.setBlockData(wallSign);
+                sign.update();
+            }
+        }, 1L);
 
         return signDirection;
+    }
+
+    public static Block formBlocksFromChest(Block chestBlock) {
+        if(!(chestBlock.getBlockData() instanceof org.bukkit.block.data.type.Chest)){
+            return null;
+        }
+        org.bukkit.block.data.type.Chest chest = (org.bukkit.block.data.type.Chest)chestBlock.getBlockData();
+
+        Block signBlock = chestBlock.getRelative(chest.getFacing());
+        signBlock.setType(Material.OAK_WALL_SIGN);
+
+        if(signBlock.getBlockData() instanceof WallSign){
+            WallSign wallSign = (WallSign) signBlock.getBlockData();
+            wallSign.setFacing(chest.getFacing());
+            signBlock.setBlockData(wallSign);
+            return signBlock;
+        }
+
+        return null;
+    }
+
+    public static String getCleanLocation(Location loc, boolean includeWorld){
+        String text = "";
+        if(includeWorld)
+            text = loc.getWorld().getName() + " - ";
+        text = text + "("+ loc.getBlockX() + ", "+loc.getBlockY() + ", "+loc.getBlockZ() + ")";
+        return text;
     }
 }
