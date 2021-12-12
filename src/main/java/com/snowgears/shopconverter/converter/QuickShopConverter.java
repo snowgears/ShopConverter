@@ -7,7 +7,12 @@ import com.snowgears.shop.shop.SellShop;
 import com.snowgears.shopconverter.ShopConverter;
 import org.bukkit.Bukkit;
 import org.bukkit.Chunk;
+import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.block.Block;
+import org.bukkit.block.BlockFace;
+import org.bukkit.block.Sign;
+import org.bukkit.block.data.type.WallSign;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.Plugin;
 import org.maxgamer.quickshop.api.QuickShopAPI;
@@ -48,27 +53,71 @@ public class QuickShopConverter implements Converter {
 
             chestBlock = shop.getLocation().getBlock();
 
-            shop.delete();
-
-            signBlock = ShopConverter.formBlocksFromChest(chestBlock);
-
-            if(signBlock != null) {
-                org.bukkit.block.data.type.Chest chest = (org.bukkit.block.data.type.Chest)chestBlock.getBlockData();
-
-                AbstractShop updatedShop = null;
-                if (shop.isBuying()) {
-                    updatedShop = new BuyShop(signBlock.getLocation(), ownerUUID, price, amount, isAdmin, chest.getFacing());
+            Sign oldSignBlock = null;
+            BlockFace oldSignFacing = null;
+            Material oldSignMaterial = null;
+            if(shop.getSigns().isEmpty()){
+                oldSignFacing = ShopConverter.getChestFacing(chestBlock);
+                oldSignMaterial = Material.OAK_WALL_SIGN;
+                chestBlock.getRelative(oldSignFacing).setType(oldSignMaterial);
+                oldSignBlock = (Sign)chestBlock.getRelative(oldSignFacing);
+            }
+            else{
+                oldSignBlock = shop.getSigns().get(0);
+                if (oldSignBlock.getBlockData() instanceof WallSign) {
+                    WallSign wallSign = (WallSign) oldSignBlock.getBlockData();
+                    oldSignFacing = wallSign.getFacing();
+                    oldSignMaterial = oldSignBlock.getType();
                 }
-                else if (shop.isSelling()) {
-                    updatedShop = new SellShop(signBlock.getLocation(), ownerUUID, price, amount, isAdmin, chest.getFacing());
+            }
+
+            if(oldSignBlock == null || oldSignFacing == null || oldSignMaterial == null) {
+                shop.delete();
+
+                signBlock = ShopConverter.formBlocksFromChest(chestBlock);
+
+                if (signBlock != null) {
+                    org.bukkit.block.data.type.Chest chest = (org.bukkit.block.data.type.Chest) chestBlock.getBlockData();
+
+                    AbstractShop updatedShop = null;
+                    if (shop.isBuying()) {
+                        updatedShop = new BuyShop(signBlock.getLocation(), ownerUUID, price, amount, isAdmin, chest.getFacing());
+                    } else if (shop.isSelling()) {
+                        updatedShop = new SellShop(signBlock.getLocation(), ownerUUID, price, amount, isAdmin, chest.getFacing());
+                    }
+                    Shop.getPlugin().getShopHandler().addShop(updatedShop);
+                    updatedShop.setItemStack(is);
+                    updatedShop.updateSign();
+                    updatedShop.load();
+                    numConverted++;
+
+                    System.out.println("[ShopConverter] Converted QuickShop at " + ShopConverter.getCleanLocation(chestBlock.getLocation(), true));
                 }
-                Shop.getPlugin().getShopHandler().addShop(updatedShop);
-                updatedShop.setItemStack(is);
-                updatedShop.updateSign();
-                updatedShop.load();
+            }
+            else{
+                shop.delete();
+
+                ShopConverter.formBlocksFromChestAndSign(chestBlock, oldSignBlock, oldSignFacing, oldSignMaterial);
+
+                final Block fSignBlock = oldSignBlock.getBlock();
+                final BlockFace fOldSignFacing = oldSignFacing;
+                ShopConverter.plugin.getServer().getScheduler().scheduleSyncDelayedTask(ShopConverter.plugin, new Runnable() {
+                    public void run() {
+                        AbstractShop updatedShop = null;
+                        if (shop.isBuying()) {
+                            updatedShop = new BuyShop(fSignBlock.getLocation(), ownerUUID, price, amount, isAdmin, fOldSignFacing);
+                        } else if (shop.isSelling()) {
+                            updatedShop = new SellShop(fSignBlock.getLocation(), ownerUUID, price, amount, isAdmin, fOldSignFacing);
+                        }
+                        Shop.getPlugin().getShopHandler().addShop(updatedShop);
+                        updatedShop.setItemStack(is);
+                        updatedShop.updateSign();
+                        updatedShop.load();
+                    }
+                }, 1L);
+
                 numConverted++;
-
-                System.out.println("[ShopConverter] Converted QuickShop at "+ShopConverter.getCleanLocation(chestBlock.getLocation(), true));
+                System.out.println("[ShopConverter] Converted QuickShop at " + ShopConverter.getCleanLocation(chestBlock.getLocation(), true));
             }
         }
         ShopConverter.shopPlugin.getShopHandler().saveAllShops();

@@ -163,6 +163,15 @@ public class ShopConverter extends JavaPlugin {
         return signDirection;
     }
 
+    public static BlockFace getChestFacing(Block chestBlock) {
+        if(!(chestBlock.getBlockData() instanceof org.bukkit.block.data.type.Chest)){
+            return null;
+        }
+        org.bukkit.block.data.type.Chest chest = (org.bukkit.block.data.type.Chest)chestBlock.getBlockData();
+
+        return chest.getFacing();
+    }
+
     public static Block formBlocksFromChest(Block chestBlock) {
         if(!(chestBlock.getBlockData() instanceof org.bukkit.block.data.type.Chest)){
             return null;
@@ -180,6 +189,25 @@ public class ShopConverter extends JavaPlugin {
         }
 
         return null;
+    }
+
+    public static void formBlocksFromChestAndSign(Block chestBlock, Sign oldSignBlock, BlockFace oldSignFacing, Material oldSignMaterial) {
+        if(!(chestBlock.getBlockData() instanceof org.bukkit.block.data.type.Chest)){
+            return;
+        }
+        oldSignBlock.setType(oldSignMaterial);
+        oldSignBlock.update(true);
+
+        plugin.getServer().getScheduler().scheduleSyncDelayedTask(plugin, new Runnable() {
+            public void run() {
+                //when in doubt do a delayed task
+                if(oldSignBlock.getBlockData() instanceof WallSign){
+                    WallSign wallSign = (WallSign) oldSignBlock.getBlockData();
+                    wallSign.setFacing(oldSignFacing);
+                    oldSignBlock.setBlockData(wallSign);
+                }
+            }
+        }, 1L);
     }
 
     public static String getCleanLocation(Location loc, boolean includeWorld){
